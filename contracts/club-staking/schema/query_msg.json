@@ -3,19 +3,18 @@
   "title": "QueryMsg",
   "anyOf": [
     {
-      "description": "Returns the current balance of the given address, 0 if unset. Return type: BalanceResponse.",
       "type": "object",
       "required": [
-        "balance"
+        "club_staking_details"
       ],
       "properties": {
-        "balance": {
+        "club_staking_details": {
           "type": "object",
           "required": [
-            "address"
+            "club_name"
           ],
           "properties": {
-            "address": {
+            "club_name": {
               "type": "string"
             }
           }
@@ -24,49 +23,19 @@
       "additionalProperties": false
     },
     {
-      "description": "Returns metadata on the contract - name, decimals, supply, etc. Return type: TokenInfoResponse.",
+      "description": "Returns the current state of withdrawn tokens that are locked for BONDING_DURATION = 7 days (before being credited back) for the given address. Return type: BondingDetails.",
       "type": "object",
       "required": [
-        "token_info"
+        "club_bonding_details"
       ],
       "properties": {
-        "token_info": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Only with \"mintable\" extension. Returns who can mint and the hard cap on maximum tokens after minting. Return type: MinterResponse.",
-      "type": "object",
-      "required": [
-        "minter"
-      ],
-      "properties": {
-        "minter": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Only with \"allowance\" extension. Returns how much spender can use from owner account, 0 if unset. Return type: AllowanceResponse.",
-      "type": "object",
-      "required": [
-        "allowance"
-      ],
-      "properties": {
-        "allowance": {
+        "club_bonding_details": {
           "type": "object",
           "required": [
-            "owner",
-            "spender"
+            "club_name"
           ],
           "properties": {
-            "owner": {
-              "type": "string"
-            },
-            "spender": {
+            "club_name": {
               "type": "string"
             }
           }
@@ -75,34 +44,151 @@
       "additionalProperties": false
     },
     {
-      "description": "Only with \"enumerable\" extension (and \"allowances\") Returns all allowances this owner has approved. Supports pagination. Return type: AllAllowancesResponse.",
       "type": "object",
       "required": [
-        "all_allowances"
+        "club_ownership_details"
       ],
       "properties": {
-        "all_allowances": {
+        "club_ownership_details": {
           "type": "object",
           "required": [
-            "owner"
+            "club_name"
           ],
           "properties": {
-            "limit": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "owner": {
+            "club_name": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "club_previous_ownership_details"
+      ],
+      "properties": {
+        "club_previous_ownership_details": {
+          "type": "object",
+          "required": [
+            "previous_owner"
+          ],
+          "properties": {
+            "previous_owner": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "club_ownership_details_for_owner"
+      ],
+      "properties": {
+        "club_ownership_details_for_owner": {
+          "type": "object",
+          "required": [
+            "owner_address"
+          ],
+          "properties": {
+            "owner_address": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "all_club_ownership_details"
+      ],
+      "properties": {
+        "all_club_ownership_details": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "all_previous_club_ownership_details"
+      ],
+      "properties": {
+        "all_previous_club_ownership_details": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "all_stakes"
+      ],
+      "properties": {
+        "all_stakes": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "all_stakes_for_user"
+      ],
+      "properties": {
+        "all_stakes_for_user": {
+          "type": "object",
+          "required": [
+            "user_address"
+          ],
+          "properties": {
+            "user_address": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "all_bonds"
+      ],
+      "properties": {
+        "all_bonds": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "club_bonding_details_for_user"
+      ],
+      "properties": {
+        "club_bonding_details_for_user": {
+          "type": "object",
+          "required": [
+            "club_name",
+            "user_address"
+          ],
+          "properties": {
+            "club_name": {
               "type": "string"
             },
-            "start_after": {
-              "type": [
-                "string",
-                "null"
-              ]
+            "user_address": {
+              "type": "string"
             }
           }
         }
@@ -110,28 +196,43 @@
       "additionalProperties": false
     },
     {
-      "description": "Only with \"enumerable\" extension Returns all accounts that have balances. Supports pagination. Return type: AllAccountsResponse.",
       "type": "object",
       "required": [
-        "all_accounts"
+        "get_club_ranking_by_stakes"
       ],
       "properties": {
-        "all_accounts": {
+        "get_club_ranking_by_stakes": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "reward_amount"
+      ],
+      "properties": {
+        "reward_amount": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "query_platform_fees"
+      ],
+      "properties": {
+        "query_platform_fees": {
           "type": "object",
+          "required": [
+            "msg"
+          ],
           "properties": {
-            "limit": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "start_after": {
-              "type": [
-                "string",
-                "null"
-              ]
+            "msg": {
+              "$ref": "#/definitions/Binary"
             }
           }
         }
@@ -139,30 +240,34 @@
       "additionalProperties": false
     },
     {
-      "description": "Only with \"marketing\" extension Returns more metadata on the contract to display in the client: - description, logo, project url, etc. Return type: MarketingInfoResponse",
       "type": "object",
       "required": [
-        "marketing_info"
+        "query_staker_rewards"
       ],
       "properties": {
-        "marketing_info": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Only with \"marketing\" extension Downloads the mbeded logo data (if stored on chain). Errors if no logo data ftored for this contract. Return type: DownloadLogoResponse.",
-      "type": "object",
-      "required": [
-        "download_logo"
-      ],
-      "properties": {
-        "download_logo": {
-          "type": "object"
+        "query_staker_rewards": {
+          "type": "object",
+          "required": [
+            "club_name",
+            "staker"
+          ],
+          "properties": {
+            "club_name": {
+              "type": "string"
+            },
+            "staker": {
+              "type": "string"
+            }
+          }
         }
       },
       "additionalProperties": false
     }
-  ]
+  ],
+  "definitions": {
+    "Binary": {
+      "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
+      "type": "string"
+    }
+  }
 }

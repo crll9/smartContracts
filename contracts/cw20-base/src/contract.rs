@@ -1,48 +1,30 @@
+use cosmwasm_std::{
+    Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdError, StdResult, Timestamp, to_binary, Uint128,
+};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    attr, to_binary, Addr, Attribute, Binary, Deps, DepsMut, Env, MessageInfo, OverflowError,
-    OverflowOperation, Response, StdError, StdResult, Timestamp, Uint128,
-};
 
-use cw2::set_contract_version;
 use cw20::{
-    AllowanceResponse, BalanceResponse, Cw20Coin, Cw20ReceiveMsg, DownloadLogoResponse,
-    EmbeddedLogo, Expiration, Logo, LogoInfo, MarketingInfoResponse, MinterResponse,
-    TokenInfoResponse,
+    BalanceResponse, Cw20Coin, Cw20ExecuteMsg, Cw20ReceiveMsg, DownloadLogoResponse, EmbeddedLogo,
+    Logo, LogoInfo, MarketingInfoResponse, MinterResponse, TokenInfoResponse,
 };
+use cw2::set_contract_version;
 
 use crate::allowances::{
-    deduct_allowance, execute_burn_from, execute_decrease_allowance, execute_increase_allowance,
-    execute_send_from, execute_transfer_from, query_allowance,
+    execute_burn_from, execute_decrease_allowance, execute_increase_allowance, execute_send_from,
+    execute_transfer_from, query_allowance,
 };
 use crate::enumerable::{query_all_accounts, query_all_allowances};
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{
-    MinterData, TokenInfo, VestingDetails, ALLOWANCES, BALANCES, LOGO, MARKETING_INFO, TOKEN_INFO,
-    VESTING_DETAILS,
-};
+use crate::msg::{InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::state::{BALANCES, LOGO, MARKETING_INFO, MinterData, RESTRICTED_CONTRACT_LIST, RESTRICTED_TIMESTAMP,
+                   RESTRICTED_WALLET_LIST, TOKEN_INFO, TokenInfo};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw20-base";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const LOGO_SIZE_CAP: usize = 5 * 1024;
-
-const MAIN_WALLET: &str = "terra1t3czdl5h4w4qwgkzs80fdstj0z7rfv9v2j6uh3";
-
-const GAMIFIED_AIRDROP_WALLET: &str = "terra144tlfg2zqtphwfpwrtqvvzyl362a406v2r08rj";
-
-const ADVISOR_WALLET: &str = "terra17yvv240qq4c6alyrcgvk6wnf402u8gp3d3nxgm";
-
-const PRIVATE_SALE_WALLET: &str = "terra1e7maadq8sdk6aqaz2vwzxrsfr3tu8svz2sw850";
-
-const NITIN_WALLET: &str = "terra1jq6ffpwfj08rx9wxu02ussv6pequm0tkzfjq22";
-
-const AJAY_WALLET: &str = "terra1mk9nav0hv5r8f7dwymjxml8yft78qkt6fuqae7";
-
-const SAMEER_WALLET: &str = "terra1cm7rklc6m2r8klnqj505ymntf3xrqtatthc64e";
 
 /// Checks if data starts with XML preamble
 fn verify_xml_preamble(data: &[u8]) -> Result<(), ContractError> {
@@ -108,7 +90,7 @@ fn verify_logo(logo: &Logo) -> Result<(), ContractError> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     mut deps: DepsMut,
-    env: Env,
+    _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -166,152 +148,6 @@ pub fn instantiate(
         };
         MARKETING_INFO.save(deps.storage, &data)?;
     }
-
-    instantiate_category_vesting_schedules(deps, env)?;
-
-    Ok(Response::default())
-}
-
-fn instantiate_category_vesting_schedules(
-    deps: DepsMut,
-    env: Env,
-) -> Result<Response, ContractError> {
-    let vesting_start_timestamp = env.block.time;
-    let ga_address = deps.api.addr_validate(GAMIFIED_AIRDROP_WALLET)?;
-    let ga_vesting_details = VestingDetails {
-        vesting_start_timestamp: vesting_start_timestamp,
-        initial_vesting_count: Uint128::from(3_950_000_000_000u128),
-        initial_vesting_consumed: Uint128::zero(),
-        // vesting_periodicity: 5 * 60, // (every 5 minutes)
-        vesting_periodicity: 24 * 60 * 60, // (daily)
-        vesting_count_per_period: Uint128::from(69_490_740_740u128),
-        total_vesting_token_count: Uint128::from(79_000_000_000_000u128),
-        total_claimed_tokens_till_now: Uint128::zero(),
-        last_claimed_timestamp: None,
-        tokens_available_to_claim: Uint128::zero(),
-        last_vesting_timestamp: None,
-        cliff_period: 0,
-        category_address: None,
-    };
-    VESTING_DETAILS.save(deps.storage, &ga_address, &ga_vesting_details)?;
-
-    //Save vesting details for advisors
-    let advisors_address = deps.api.addr_validate(ADVISOR_WALLET)?;
-    let advisors_vesting_details = VestingDetails {
-        vesting_start_timestamp: vesting_start_timestamp,
-        initial_vesting_count: Uint128::zero(),
-        initial_vesting_consumed: Uint128::zero(),
-        // vesting_periodicity: 5 * 60, // (every 5 minutes) 
-        vesting_periodicity: 24 * 60 * 60, // (daily)
-        vesting_count_per_period: Uint128::from(40_833_333_333u128),
-        total_vesting_token_count: Uint128::from(14_700_000_000_000u128),
-        total_claimed_tokens_till_now: Uint128::zero(),
-        last_claimed_timestamp: None,
-        tokens_available_to_claim: Uint128::zero(),
-        last_vesting_timestamp: None,
-        cliff_period: 4,
-        category_address: None,
-    };
-    VESTING_DETAILS.save(deps.storage, &advisors_address, &advisors_vesting_details)?;
-
-    //Save vesting details for Private Sale
-    let priv_sale_address = deps.api.addr_validate(PRIVATE_SALE_WALLET)?;
-    let priv_sale_vesting_details = VestingDetails {
-        vesting_start_timestamp: vesting_start_timestamp,
-        initial_vesting_count: Uint128::from(4_200_000_000_000u128),
-        initial_vesting_consumed: Uint128::zero(),
-        // vesting_periodicity: 5 * 60, // (every 5 minutes)
-        vesting_periodicity: 24 * 60 * 60, //24 * 60 * 60, //daily
-        vesting_count_per_period: Uint128::from(210_000_000_000u128),
-        total_vesting_token_count: Uint128::from(42_000_000_000_000u128),
-        total_claimed_tokens_till_now: Uint128::zero(),
-        last_claimed_timestamp: None,
-        tokens_available_to_claim: Uint128::zero(),
-        last_vesting_timestamp: None,
-        cliff_period: 0,
-        category_address: None,
-    };
-    VESTING_DETAILS.save(deps.storage, &priv_sale_address, &priv_sale_vesting_details)?;
-
-    instantiate_sub_category_vesting_schedules(
-        deps,
-        env,
-        vec![
-            (
-                PRIVATE_SALE_WALLET, //private-sale
-                NITIN_WALLET,        //nitin-wallet
-                Uint128::from(16_800_000_000_000u128),
-            ),
-            (
-                PRIVATE_SALE_WALLET, //private-sale
-                AJAY_WALLET,         //ajay-wallet
-                Uint128::from(12_600_000_000_000u128),
-            ),
-            (
-                PRIVATE_SALE_WALLET, //private-sale
-                SAMEER_WALLET,       //sameer-wallet
-                Uint128::from(12_600_000_000_000u128),
-            ),
-        ],
-    )?;
-
-    Ok(Response::default())
-}
-
-fn instantiate_sub_category_vesting_schedules(
-    deps: DepsMut,
-    env: Env,
-    investors: Vec<(&str, &str, Uint128)>,
-) -> Result<Response, ContractError> {
-    for investor in investors {
-        //Check if the amount is greater than zero
-        if investor.2 > Uint128::zero() {
-            //Get the category address
-            let category_address = deps.api.addr_validate(investor.0)?;
-            //Get the category vesting details
-            let cat_vesting_details = VESTING_DETAILS.may_load(deps.storage, &category_address)?;
-            match cat_vesting_details {
-                Some(cvd) => {
-                    // Get the investor address.
-                    let address = deps.api.addr_validate(investor.1)?;
-                    let investment = investor.2;
-                    let category_max_amount = cvd.total_vesting_token_count;
-                    let sub_cat_vesting_details = VestingDetails {
-                        vesting_start_timestamp: cvd.vesting_start_timestamp,
-                        initial_vesting_count: cvd
-                            .initial_vesting_count
-                            .checked_mul(investment)
-                            .unwrap()
-                            .checked_div(category_max_amount)
-                            .unwrap(),
-                        initial_vesting_consumed: Uint128::zero(),
-                        vesting_periodicity: cvd.vesting_periodicity,
-                        vesting_count_per_period: cvd
-                            .vesting_count_per_period
-                            .checked_mul(investment)
-                            .unwrap()
-                            .checked_div(category_max_amount)
-                            .unwrap(),
-                        total_vesting_token_count: investment,
-                        total_claimed_tokens_till_now: Uint128::zero(),
-                        last_claimed_timestamp: None,
-                        tokens_available_to_claim: Uint128::zero(),
-                        last_vesting_timestamp: None,
-                        cliff_period: cvd.cliff_period,
-                        category_address: Some(String::from(investor.0)),
-                    };
-                    VESTING_DETAILS.save(deps.storage, &address, &sub_cat_vesting_details)?;
-                }
-                None => {
-                    let mut err_msg = String::from("No vesting details found for address ");
-                    err_msg.push_str(investor.0);
-                    return Err(ContractError::Std(StdError::NotFound {
-                        kind: String::from(err_msg),
-                    }));
-                }
-            };
-        };
-    }
     Ok(Response::default())
 }
 
@@ -330,66 +166,165 @@ pub fn execute(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    msg: ExecuteMsg,
+    msg: Cw20ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Transfer { recipient, amount } => {
+        Cw20ExecuteMsg::Transfer { recipient, amount } => {
             execute_transfer(deps, env, info, recipient, amount)
         }
-        ExecuteMsg::Burn { amount } => execute_burn(deps, env, info, amount),
-        ExecuteMsg::Send {
+        Cw20ExecuteMsg::Burn { amount } => execute_burn(deps, env, info, amount),
+        Cw20ExecuteMsg::Send {
             contract,
             amount,
             msg,
         } => execute_send(deps, env, info, contract, amount, msg),
-        ExecuteMsg::Mint { recipient, amount } => execute_mint(deps, env, info, recipient, amount),
-        ExecuteMsg::IncreaseAllowance {
+        Cw20ExecuteMsg::Mint { recipient, amount } => {
+            execute_mint(deps, env, info, recipient, amount)
+        }
+        Cw20ExecuteMsg::IncreaseAllowance {
             spender,
             amount,
             expires,
         } => execute_increase_allowance(deps, env, info, spender, amount, expires),
-        ExecuteMsg::DecreaseAllowance {
+        Cw20ExecuteMsg::DecreaseAllowance {
             spender,
             amount,
             expires,
         } => execute_decrease_allowance(deps, env, info, spender, amount, expires),
-        ExecuteMsg::TransferFrom {
+        Cw20ExecuteMsg::TransferFrom {
             owner,
             recipient,
             amount,
         } => execute_transfer_from(deps, env, info, owner, recipient, amount),
-        ExecuteMsg::BurnFrom { owner, amount } => execute_burn_from(deps, env, info, owner, amount),
-        ExecuteMsg::SendFrom {
+        Cw20ExecuteMsg::BurnFrom { owner, amount } => {
+            execute_burn_from(deps, env, info, owner, amount)
+        }
+        Cw20ExecuteMsg::SendFrom {
             owner,
             contract,
             amount,
             msg,
         } => execute_send_from(deps, env, info, owner, contract, amount, msg),
-        ExecuteMsg::UpdateMarketing {
+        Cw20ExecuteMsg::UpdateMarketing {
             project,
             description,
             marketing,
         } => execute_update_marketing(deps, env, info, project, description, marketing),
-        ExecuteMsg::UploadLogo(logo) => execute_upload_logo(deps, env, info, logo),
-        ExecuteMsg::PeriodicallyTransferToCategories {} => {
-            periodically_transfer_to_categories(deps, env, info)
+        Cw20ExecuteMsg::UploadLogo(logo) => execute_upload_logo(deps, env, info, logo),
+        Cw20ExecuteMsg::SetWhiteListExpirationTimestamp { timestamp } => {
+            set_whitelist_expiration_timestamp(deps, env, info, timestamp)
         }
-        ExecuteMsg::PeriodicallyCalculateVesting {} => {
-            periodically_calculate_vesting(deps, env, info)
+        Cw20ExecuteMsg::RestrictedWalletListUpdate { add_list, remove_list } => {
+            restricted_wallet_list_update(deps, env, info, add_list, remove_list)
         }
-        ExecuteMsg::ClaimVestedTokens { amount } => claim_vested_tokens(deps, env, info, amount),
+        Cw20ExecuteMsg::RestrictedContractListUpdate { add_list, remove_list } => {
+            restricted_contract_list_update(deps, env, info, add_list, remove_list)
+        }
     }
+}
+
+pub fn set_whitelist_expiration_timestamp(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    expiration_timestamp: Timestamp,
+) -> Result<Response, ContractError> {
+    let mut config = TOKEN_INFO.load(deps.storage)?;
+    if config.mint.is_none() || config.mint.as_ref().unwrap().minter != info.sender {
+        return Err(ContractError::Unauthorized {});
+    }
+    let rts = RESTRICTED_TIMESTAMP.may_load(deps.storage)?;
+    match rts {
+        Some(_ts) => {
+            return Err(StdError::generic_err("Restricted Timestamp already set").into());
+        }
+        None => {}
+    }
+    if env.block.time > expiration_timestamp {
+        return Err(StdError::generic_err("Cannot set Restricted Timestamp to past").into());
+    }
+    RESTRICTED_TIMESTAMP.save(deps.storage, &expiration_timestamp)?;
+    Ok(Response::default())
+}
+
+pub fn restricted_wallet_list_update(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    add_list: Vec<String>,
+    remove_list: Vec<String>,
+) -> Result<Response, ContractError> {
+    let mut config = TOKEN_INFO.load(deps.storage)?;
+    if config.mint.is_none() || config.mint.as_ref().unwrap().minter != info.sender {
+        return Err(ContractError::Unauthorized {});
+    }
+    for add_elem in add_list {
+        let rwl = RESTRICTED_WALLET_LIST.may_load(deps.storage, add_elem.clone())?;
+        match rwl {
+            Some(_existing_elem) => {}
+            None => {
+                RESTRICTED_WALLET_LIST.save(deps.storage, add_elem, &env.block.time)?;
+            }
+        }
+    }
+    for rem_elem in remove_list {
+        let rwl = RESTRICTED_WALLET_LIST.may_load(deps.storage, rem_elem.clone())?;
+        match rwl {
+            Some(_existing_elem) => {
+                RESTRICTED_WALLET_LIST.remove(deps.storage, rem_elem);
+            }
+            None => {}
+        }
+    }
+    Ok(Response::default())
+}
+
+pub fn restricted_contract_list_update(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    add_list: Vec<String>,
+    remove_list: Vec<String>,
+) -> Result<Response, ContractError> {
+    let mut config = TOKEN_INFO.load(deps.storage)?;
+    if config.mint.is_none() || config.mint.as_ref().unwrap().minter != info.sender {
+        return Err(ContractError::Unauthorized {});
+    }
+    for add_elem in add_list {
+        let rwl = RESTRICTED_CONTRACT_LIST.may_load(deps.storage, add_elem.clone())?;
+        match rwl {
+            Some(_existing_elem) => {}
+            None => {
+                RESTRICTED_CONTRACT_LIST.save(deps.storage, add_elem, &env.block.time)?;
+            }
+        }
+    }
+    for rem_elem in remove_list {
+        let rwl = RESTRICTED_CONTRACT_LIST.may_load(deps.storage, rem_elem.clone())?;
+        match rwl {
+            Some(_existing_elem) => {
+                RESTRICTED_CONTRACT_LIST.remove(deps.storage, rem_elem);
+            }
+            None => {}
+        }
+    }
+    Ok(Response::default())
 }
 
 pub fn execute_transfer(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     recipient: String,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
     if amount == Uint128::zero() {
         return Err(ContractError::InvalidZeroAmount {});
+    }
+
+    let restrictions = query_white_list_restrictions(deps.as_ref(), env, info.sender.to_string(), "".to_string(), false)?;
+    if restrictions {
+        return Err(StdError::generic_err("Whitelist Restricted").into());
     }
 
     let rcpt_addr = deps.api.addr_validate(&recipient)?;
@@ -488,7 +423,7 @@ pub fn execute_mint(
 
 pub fn execute_send(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     contract: String,
     amount: Uint128,
@@ -496,6 +431,11 @@ pub fn execute_send(
 ) -> Result<Response, ContractError> {
     if amount == Uint128::zero() {
         return Err(ContractError::InvalidZeroAmount {});
+    }
+
+    let white_list_restrictions = query_white_list_restrictions(deps.as_ref(), env, info.sender.to_string(), contract.clone(), true)?;
+    if white_list_restrictions {
+        return Err(StdError::generic_err("Whitelist Restricted").into());
     }
 
     let rcpt_addr = deps.api.addr_validate(&contract)?;
@@ -525,7 +465,7 @@ pub fn execute_send(
                 amount,
                 msg,
             }
-            .into_cosmos_msg(contract)?,
+                .into_cosmos_msg(contract)?,
         );
     Ok(res)
 }
@@ -618,485 +558,6 @@ pub fn execute_upload_logo(
     Ok(res)
 }
 
-fn periodically_transfer_to_categories(
-    mut deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    //capture the current system time
-    let now = env.block.time;
-
-    let distribute_from = String::from(MAIN_WALLET);
-    let address = deps.api.addr_validate(distribute_from.clone().as_str())?;
-
-    //Check if the sender (one who is executing this contract) is main
-    if address != info.sender {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    // Fetch all tokens that can be distributed as per vesting logic
-    let distribution_details = populate_transfer_details(&deps, now)?;
-
-    // Calculate the total amount to be vested
-    let total_transfer_amount = calculate_total_distribution(&distribution_details);
-    //Get the balance available in main wallet
-    let balance = BALANCES
-        .may_load(deps.storage, &address)?
-        .unwrap_or_default();
-
-    //Check if there is sufficient balance with main wallet
-    // return error otherwise
-    if balance < total_transfer_amount {
-        return Err(ContractError::Std(StdError::overflow(OverflowError::new(
-            OverflowOperation::Sub,
-            balance,
-            total_transfer_amount,
-        ))));
-    }
-    let mut attribs: Vec<Attribute> = Vec::new();
-    for elem in distribution_details {
-        // Transfer the funds
-        let res = distribute_vested(
-            &mut deps,
-            distribute_from.clone(),
-            elem.spender_address.clone(),
-            elem.amount,
-        )?;
-        for attrib in res.attributes {
-            attribs.push(attrib);
-        }
-        // Save distribution information
-        let res = update_vesting_details(
-            &mut deps,
-            elem.spender_address.clone(),
-            env.block.time,
-            Some(elem),
-            None,
-        )?;
-        for attrib in res.attributes {
-            attribs.push(attrib);
-        }
-        attribs.push(Attribute::new("kuchha hua", "Pata nahi"));
-    }
-    Ok(Response::new().add_attributes(attribs))
-}
-
-fn distribute_vested(
-    deps: &mut DepsMut,
-    sender: String,
-    recipient: String,
-    amount: Uint128,
-) -> Result<Response, ContractError> {
-    if amount == Uint128::zero() {
-        return Err(ContractError::InvalidZeroAmount {});
-    }
-
-    let rcpt_addr = deps.api.addr_validate(&recipient)?;
-    let sender_addr = deps.api.addr_validate(&sender)?;
-
-    BALANCES.update(
-        deps.storage,
-        &sender_addr,
-        |balance: Option<Uint128>| -> StdResult<_> {
-            Ok(balance.unwrap_or_default().checked_sub(amount)?)
-        },
-    )?;
-    BALANCES.update(
-        deps.storage,
-        &rcpt_addr,
-        |balance: Option<Uint128>| -> StdResult<_> { Ok(balance.unwrap_or_default() + amount) },
-    )?;
-
-    let res = Response::new()
-        .add_attribute("action", "transfer")
-        .add_attribute("from", sender)
-        .add_attribute("to", recipient)
-        .add_attribute("amount", amount);
-    Ok(res)
-}
-
-fn claim_vested_tokens(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    amount: Uint128,
-) -> Result<Response, ContractError> {
-    //Get vesting information for the sender of this message
-    let vd = VESTING_DETAILS.may_load(deps.storage, &info.sender)?;
-    match vd {
-        Some(vd) => {
-            let owner_addr_str = vd.category_address;
-            match owner_addr_str {
-                Some(owner_addr_str) => {
-                    let owner_addr = deps.api.addr_validate(&owner_addr_str)?;
-                    // deduct allowance before doing anything else have enough allowance
-                    deduct_allowance(deps.storage, &owner_addr, &info.sender, &env.block, amount)?;
-
-                    // deduct amount form category address
-                    BALANCES.update(
-                        deps.storage,
-                        &owner_addr,
-                        |balance: Option<Uint128>| -> StdResult<_> {
-                            Ok(balance.unwrap_or_default().checked_sub(amount)?)
-                        },
-                    )?;
-                    // add amount form sender address
-                    BALANCES.update(
-                        deps.storage,
-                        &info.sender,
-                        |balance: Option<Uint128>| -> StdResult<_> {
-                            Ok(balance.unwrap_or_default() + amount)
-                        },
-                    )?;
-
-                    //Update vesting info for sender
-                    VESTING_DETAILS.update(deps.storage, &info.sender, |vd| -> StdResult<_> {
-                        match vd {
-                            Some(mut v) => {
-                                v.total_claimed_tokens_till_now =
-                                    v.total_claimed_tokens_till_now + amount;
-                                v.tokens_available_to_claim = v.tokens_available_to_claim - amount;
-                                v.last_claimed_timestamp = Some(env.block.time);
-                                Ok(v)
-                            }
-                            None => Err(StdError::GenericErr {
-                                msg: String::from("Vesting Details not found"),
-                            }),
-                        }
-                    })?;
-
-                    let res = Response::new().add_attributes(vec![
-                        attr("action", "transfer_from"),
-                        attr("from", owner_addr),
-                        attr("to", info.sender.to_string().clone()),
-                        attr("by", info.sender),
-                        attr("amount", amount),
-                    ]);
-                    return Ok(res);
-                }
-                None => {
-                    return Err(ContractError::Std(StdError::NotFound {
-                        kind: String::from("No parent category found"),
-                    }))
-                }
-            }
-        }
-        None => {
-            return Err(ContractError::Std(StdError::NotFound {
-                kind: String::from("No vesting details found"),
-            }))
-        }
-    };
-}
-
-fn periodically_calculate_vesting(
-    mut deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    let now = env.block.time;
-    let invoker = String::from(MAIN_WALLET);
-    let address = deps.api.addr_validate(invoker.clone().as_str())?;
-
-    //Check if the sender (one who is executing this contract) is main
-    if address != info.sender {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    // Fetch all tokens that can be vested as per vesting logic
-    let vested_details = populate_vesting_details(&deps, now)?;
-    // Calculate the total amount to be vested
-    let total_vested_amount = calculate_total_distribution(&vested_details);
-    //Get the balance available in main wallet
-    let balance = BALANCES
-        .may_load(deps.storage, &address)?
-        .unwrap_or_default();
-    //Check if there is sufficient balance with main wallet
-    // return error otherwise
-    if balance < total_vested_amount {
-        return Err(ContractError::Std(StdError::overflow(OverflowError::new(
-            OverflowOperation::Sub,
-            balance,
-            total_vested_amount,
-        ))));
-    }
-    let mut attribs: Vec<Attribute> = Vec::new();
-    for elem in vested_details {
-        if elem.amount.u128() > 0 {
-            //Update the allowancs
-            let spender_addr = deps.api.addr_validate(&elem.spender_address)?;
-            if spender_addr == info.sender {
-                return Err(ContractError::CannotSetOwnAccount {});
-            }
-            let category_address = elem.clone().category_address.unwrap_or_default();
-            let owner_addr = deps.api.addr_validate(&category_address)?;
-            let key = (&owner_addr, &spender_addr);
-            let allowance = ALLOWANCES.load(deps.storage, key);
-            match allowance {
-                Ok(mut a) => {
-                    // update the new amount
-                    a.allowance = a
-                        .allowance
-                        .checked_add(elem.amount)
-                        .map_err(StdError::overflow)?;
-                    ALLOWANCES.save(deps.storage, key, &a)?;
-                }
-                Err(_) => {
-                    // Add the new amount
-                    let allowance_response = AllowanceResponse {
-                        allowance: elem.amount,
-                        expires: Expiration::Never {},
-                    };
-                    ALLOWANCES.save(deps.storage, key, &allowance_response)?;
-                }
-            }
-            //Save the vesting details
-            let res = update_vesting_details(
-                &mut deps,
-                elem.clone().spender_address,
-                env.block.time,
-                None,
-                Some(elem),
-            )?;
-            for attrib in res.attributes {
-                attribs.push(attrib);
-            }
-        }
-    }
-    Ok(Response::new().add_attributes(attribs))
-}
-
-fn update_vesting_details(
-    deps: &mut DepsMut,
-    address: String,
-    execution_timestamp: Timestamp,
-    transferred: Option<VestingInfo>,
-    vestable: Option<VestingInfo>,
-) -> Result<Response, ContractError> {
-    let addr = deps.api.addr_validate(&address)?;
-    match transferred {
-        Some(transferred) => {
-            VESTING_DETAILS.update(deps.storage, &addr, |vd| -> StdResult<_> {
-                match vd {
-                    Some(mut v) => {
-                        let new_count = v.total_claimed_tokens_till_now + transferred.amount;
-                        if new_count <= v.total_vesting_token_count {
-                            v.total_claimed_tokens_till_now = new_count;
-                            v.last_vesting_timestamp = Some(execution_timestamp);
-                            v.last_claimed_timestamp = Some(execution_timestamp);
-                        }
-                        v.initial_vesting_consumed = v.initial_vesting_count;
-                        Ok(v)
-                    }
-                    None => Err(StdError::GenericErr {
-                        msg: String::from("Vesting Details not found"),
-                    }),
-                }
-            })?;
-        }
-        None => (),
-    }
-    match vestable {
-        Some(vestable) => {
-            VESTING_DETAILS.update(deps.storage, &addr, |vd| -> StdResult<_> {
-                match vd {
-                    Some(mut v) => {
-                        let new_count = v.tokens_available_to_claim + vestable.amount;
-                        let mut new_vestable_tokens = new_count;
-                        if v.total_claimed_tokens_till_now + new_count > v.total_vesting_token_count
-                        {
-                            new_vestable_tokens =
-                                v.total_vesting_token_count - v.total_claimed_tokens_till_now;
-                        }
-                        v.tokens_available_to_claim = new_vestable_tokens;
-                        if v.last_vesting_timestamp.is_none() {
-                            // v.tokens_available_to_claim += v.initial_vesting_count;
-                            v.initial_vesting_consumed = v.initial_vesting_count;
-                        }
-                        v.last_vesting_timestamp = Some(execution_timestamp);
-                        Ok(v)
-                    }
-                    None => Err(StdError::GenericErr {
-                        msg: String::from("Vesting Details not found"),
-                    }),
-                }
-            })?;
-        }
-        None => (),
-    }
-    Ok(Response::default())
-}
-
-fn populate_transfer_details(
-    deps: &DepsMut,
-    now: Timestamp,
-) -> Result<Vec<VestingInfo>, ContractError> {
-    let mut distribution_details: Vec<VestingInfo> = Vec::new();
-
-    let ga_address = String::from(GAMIFIED_AIRDROP_WALLET);
-    let ga_vesting_info = calculate_vesting_for_now(deps, ga_address, now)?;
-    distribution_details.push(ga_vesting_info);
-
-    //Tokens to be transferred to Private Sale wallet
-    let ps_address = String::from(PRIVATE_SALE_WALLET);
-    let ps_vesting_info = calculate_vesting_for_now(deps, ps_address, now)?;
-    distribution_details.push(ps_vesting_info);
-    Ok(distribution_details)
-}
-
-fn populate_vesting_details(
-    deps: &DepsMut,
-    now: Timestamp,
-) -> Result<Vec<VestingInfo>, ContractError> {
-    let mut distribution_details: Vec<VestingInfo> = Vec::new();
-
-    // For Nitin
-    let nitin_address = String::from(NITIN_WALLET);
-    let nitin_vesting_info = calculate_vesting_for_now(deps, nitin_address, now)?;
-    if nitin_vesting_info.amount.u128() > 0 {
-        distribution_details.push(nitin_vesting_info);
-    }
-
-    // For Ajay
-    let ajay_address = String::from(AJAY_WALLET);
-    let ajay_vesting_info = calculate_vesting_for_now(deps, ajay_address, now)?;
-    if ajay_vesting_info.amount.u128() > 0 {
-        distribution_details.push(ajay_vesting_info);
-    }
-
-    // For Sameer
-    let sameer_address = String::from(SAMEER_WALLET);
-    let sameer_vesting_info = calculate_vesting_for_now(deps, sameer_address, now)?;
-    if sameer_vesting_info.amount.u128() > 0 {
-        distribution_details.push(sameer_vesting_info);
-    }
-
-    Ok(distribution_details)
-}
-
-#[derive(Clone, Default)]
-pub struct VestingInfo {
-    pub spender_address: String,
-    pub category_address: Option<String>,
-    pub amount: Uint128,
-}
-
-fn calculate_vesting_for_now(
-    deps: &DepsMut,
-    address: String,
-    now: Timestamp,
-) -> Result<VestingInfo, ContractError> {
-    let mut message = String::from("entered calculate_vesting_for_now: ");
-    let wallet_address = deps.api.addr_validate(&address)?;
-    message.push_str(" address is valid ");
-    let vested_detais = VESTING_DETAILS.may_load(deps.storage, &wallet_address);
-    match vested_detais {
-        Ok(vested_detais) => {
-            message.push_str(" Vesting details found ");
-            let vd = vested_detais.unwrap();
-            let vesting_info = calculate_tokens_for_this_period(wallet_address, now, vd)?;
-
-            Ok(vesting_info)
-        }
-        Err(e) => Err(ContractError::Std(StdError::GenericErr {
-            msg: e.to_string(),
-        })),
-    }
-}
-
-fn calculate_tokens_for_this_period(
-    wallet_address: Addr,
-    now: Timestamp,
-    vd: VestingDetails,
-) -> Result<VestingInfo, ContractError> {
-    // println!("entered calculate_vesting_for_now: ");
-    let mut seconds_lapsed = 0;
-    let now_seconds: u64 = now.seconds();
-    // println!("now_seconds = {}", now_seconds);
-    let vesting_start_seconds = vd.vesting_start_timestamp.seconds();
-    // println!("vesting_start_seconds = {:?}", vesting_start_seconds);
-    // println!("vd.vesting_periodicity = {}", vd.vesting_periodicity);
-    if vd.vesting_periodicity > 0 {
-        let mut vesting_intervals = 0;
-        if now_seconds >= (vesting_start_seconds + (vd.cliff_period * 30 * 24 * 60 * 60)) {
-            // the now time is greater (ahead) of vesting start + cliff
-            seconds_lapsed =
-                now_seconds - (vesting_start_seconds + (vd.cliff_period * 30 * 24 * 60 * 60));
-            // println!("seconds_lapsed_1 = {}", seconds_lapsed);
-            let total_vesting_intervals = seconds_lapsed / vd.vesting_periodicity;
-            // println!("total_vesting_intervals = {}", total_vesting_intervals);
-            // println!(
-            //     "vd.last_vesting_timestamp.seconds() = {:?}",
-            //     vd.last_vesting_timestamp
-            // );
-            // println!("vesting_start_seconds = {}", vesting_start_seconds);
-            // println!("vd.cliff_period = {}", vd.cliff_period);
-            let mut seconds_till_last_vesting = 0;
-            if vd.last_vesting_timestamp.is_some() {
-                seconds_till_last_vesting = vd.last_vesting_timestamp.unwrap().seconds()
-                    - (vesting_start_seconds + vd.cliff_period * 30 * 24 * 60 * 60);
-            }
-            // println!("seconds_till_last_vesting = {}", seconds_till_last_vesting);
-            let total_vested_intervals = (seconds_till_last_vesting) / vd.vesting_periodicity;
-            // println!("total_vested_intervals = {}", total_vested_intervals);
-
-            vesting_intervals = total_vesting_intervals - total_vested_intervals;
-            // println!("vesting_intervals = {}", vesting_intervals);
-        }
-        let tokens_for_this_period_result = vd
-            .vesting_count_per_period
-            .checked_mul(Uint128::from(vesting_intervals));
-        let mut tokens_for_this_period: Uint128;
-        match tokens_for_this_period_result {
-            Ok(tokens) => {
-                // println!("tokens = {}", tokens);
-                //Add the initial vested tokens that are not yet claimed
-                tokens_for_this_period = tokens;
-            }
-            Err(e) => {
-                // println!("error = {:?}", e);
-                let mut message = String::from("error = ");
-                message.push_str(e.to_string().as_str());
-                tokens_for_this_period = Uint128::zero();
-            }
-        }
-        if vd.total_vesting_token_count
-            < (tokens_for_this_period
-                + vd.total_claimed_tokens_till_now
-                + vd.tokens_available_to_claim)
-        {
-            tokens_for_this_period = vd.total_vesting_token_count
-                - (vd.total_claimed_tokens_till_now + vd.tokens_available_to_claim);
-        }
-        // println!("tokens_for_this_period = {}", tokens_for_this_period);
-        //add the initial seed if cliff period is over
-        if now_seconds >= (vesting_start_seconds + (vd.cliff_period * 30 * 24 * 60 * 60)) {
-            tokens_for_this_period += (vd.initial_vesting_count - vd.initial_vesting_consumed);
-            // println!(
-            //     "tokens_for_this_period after adding= {}",
-            //     tokens_for_this_period
-            // );
-        }
-        Ok(VestingInfo {
-            spender_address: wallet_address.to_string(),
-            category_address: vd.category_address,
-            amount: tokens_for_this_period,
-        })
-    } else {
-        return Err(ContractError::Std(StdError::generic_err(String::from(
-            "No vesting for this address",
-        ))));
-    }
-}
-
-fn calculate_total_distribution(distribution_details: &Vec<VestingInfo>) -> Uint128 {
-    let mut total = Uint128::zero();
-    for elem in distribution_details {
-        total += elem.amount;
-    }
-    return total;
-}
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -1116,9 +577,109 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::MarketingInfo {} => to_binary(&query_marketing_info(deps)?),
         QueryMsg::DownloadLogo {} => to_binary(&query_download_logo(deps)?),
-        QueryMsg::VestingDetails { address } => to_binary(&query_vesting_details(deps, address)?),
+        QueryMsg::IsRestrictedWallet { address } => to_binary(&query_is_restricted_wallet(deps, address)?),
+        QueryMsg::IsRestrictedContract { address } => to_binary(&query_is_restricted_contract(deps, address)?),
+        QueryMsg::RestrictedWalletList {} => to_binary(&query_restricted_wallet_list(deps)?),
+        QueryMsg::RestrictedContractList {} => to_binary(&query_restricted_contract_list(deps)?),
+        QueryMsg::RestrictedListTimestamp {} => to_binary(&query_restricted_list_timestamp(deps)?),
+        QueryMsg::WhitelistRestriction {
+            wallet_address,
+            contract_address,
+            contract_check_needed,
+        } => to_binary(&query_white_list_restrictions(deps, _env, wallet_address, contract_address, contract_check_needed)?),
     }
 }
+
+pub fn query_restricted_list_timestamp(
+    deps: Deps,
+) -> StdResult<Timestamp> {
+    let rts = RESTRICTED_TIMESTAMP.may_load(deps.storage)?;
+    match rts {
+        Some(ts) => {
+            return Ok(ts);
+        }
+        None => {
+            return Err(StdError::generic_err("Restricted Timestamp not found"));
+        }
+    }
+}
+
+pub fn query_restricted_wallet_list(
+    deps: Deps,
+) -> StdResult<Vec<String>> {
+    let all_wallets: Vec<String> = RESTRICTED_WALLET_LIST
+        .keys(deps.storage, None, None, Order::Ascending)
+        .map(|k| String::from_utf8(k).unwrap())
+        .collect();
+    return Ok(all_wallets);
+}
+
+pub fn query_restricted_contract_list(
+    deps: Deps,
+) -> StdResult<Vec<String>> {
+    let all_contracts: Vec<String> = RESTRICTED_CONTRACT_LIST
+        .keys(deps.storage, None, None, Order::Ascending)
+        .map(|k| String::from_utf8(k).unwrap())
+        .collect();
+    return Ok(all_contracts);
+}
+
+pub fn query_white_list_restrictions(
+    deps: Deps,
+    env: Env,
+    wallet_address: String,
+    contract_address: String,
+    contract_check_needed: bool,
+) -> StdResult<bool> {
+    let mut restricted = false;
+    let rts = RESTRICTED_TIMESTAMP.may_load(deps.storage)?;
+    let now = env.block.time;
+    let mut restricted_timestamp = now;
+    match rts {
+        Some(ts) => {
+            restricted_timestamp = ts;
+        }
+        None => {}
+    }
+    if now < restricted_timestamp {
+        let wallet_is_restricted = query_is_restricted_wallet(deps, wallet_address.clone())?;
+        let mut contract_is_restricted = false;
+        if contract_check_needed {
+            contract_is_restricted = query_is_restricted_contract(deps, contract_address.clone())?;
+        }
+        println!("contract_is_restricted={:?} wallet_is_restricted={:?}", contract_is_restricted, wallet_is_restricted);
+        if wallet_is_restricted && !contract_is_restricted {
+            restricted = true;
+        }
+    }
+    println!("restricted = {:?}", restricted);
+    Ok(restricted)
+}
+
+pub fn query_is_restricted_wallet(deps: Deps, address: String) -> StdResult<bool> {
+    let mut wallet_is_restricted = false;
+    let rwl = RESTRICTED_WALLET_LIST.may_load(deps.storage, address)?;
+    match rwl {
+        Some(_elem) => {
+            wallet_is_restricted = true;
+        }
+        None => {}
+    }
+    Ok(wallet_is_restricted)
+}
+
+pub fn query_is_restricted_contract(deps: Deps, address: String) -> StdResult<bool> {
+    let mut contract_is_restricted = false;
+    let rcl = RESTRICTED_CONTRACT_LIST.may_load(deps.storage, address)?;
+    match rcl {
+        Some(_elem) => {
+            contract_is_restricted = true;
+        }
+        None => {}
+    }
+    Ok(contract_is_restricted)
+}
+
 
 pub fn query_balance(deps: Deps, address: String) -> StdResult<BalanceResponse> {
     let address = deps.api.addr_validate(&address)?;
@@ -1127,14 +688,7 @@ pub fn query_balance(deps: Deps, address: String) -> StdResult<BalanceResponse> 
         .unwrap_or_default();
     Ok(BalanceResponse { balance })
 }
-pub fn query_vesting_details(deps: Deps, address: String) -> StdResult<VestingDetails> {
-    let address = deps.api.addr_validate(&address)?;
-    let vd = VESTING_DETAILS.may_load(deps.storage, &address)?;
-    match vd {
-        Some(vd) => return Ok(vd),
-        None => return Err(StdError::generic_err("No vesting details found")),
-    };
-}
+
 pub fn query_token_info(deps: Deps) -> StdResult<TokenInfoResponse> {
     let info = TOKEN_INFO.load(deps.storage)?;
     let res = TokenInfoResponse {
@@ -1177,13 +731,19 @@ pub fn query_download_logo(deps: Deps) -> StdResult<DownloadLogoResponse> {
     }
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
+    Ok(Response::default())
+}
+
 #[cfg(test)]
 mod tests {
+    use cosmwasm_std::{Addr, coins, CosmosMsg, from_binary, StdError, SubMsg, WasmMsg};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_binary, Addr, CosmosMsg, StdError, SubMsg, WasmMsg};
+
+    use crate::msg::InstantiateMarketingInfo;
 
     use super::*;
-    use crate::msg::InstantiateMarketingInfo;
 
     fn get_balance<T: Into<String>>(deps: Deps, address: T) -> Uint128 {
         query_balance(deps, address.into()).unwrap().balance
@@ -1247,7 +807,7 @@ mod tests {
             }
         );
         assert_eq!(get_balance(deps.as_ref(), addr), amount);
-        assert_eq!(query_minter(deps.as_ref()).unwrap(), mint,);
+        assert_eq!(query_minter(deps.as_ref()).unwrap(), mint, );
         meta
     }
 
@@ -1454,7 +1014,7 @@ mod tests {
         // minter can mint coins to some winner
         let winner = String::from("lucky");
         let prize = Uint128::new(222_222_222);
-        let msg = ExecuteMsg::Mint {
+        let msg = Cw20ExecuteMsg::Mint {
             recipient: winner.clone(),
             amount: prize,
         };
@@ -1467,7 +1027,7 @@ mod tests {
         assert_eq!(get_balance(deps.as_ref(), winner.clone()), prize);
 
         // but cannot mint nothing
-        let msg = ExecuteMsg::Mint {
+        let msg = Cw20ExecuteMsg::Mint {
             recipient: winner.clone(),
             amount: Uint128::zero(),
         };
@@ -1478,7 +1038,7 @@ mod tests {
 
         // but if it exceeds cap (even over multiple rounds), it fails
         // cap is enforced
-        let msg = ExecuteMsg::Mint {
+        let msg = Cw20ExecuteMsg::Mint {
             recipient: winner,
             amount: Uint128::new(333_222_222),
         };
@@ -1499,7 +1059,7 @@ mod tests {
             None,
         );
 
-        let msg = ExecuteMsg::Mint {
+        let msg = Cw20ExecuteMsg::Mint {
             recipient: String::from("lucky"),
             amount: Uint128::new(222),
         };
@@ -1514,7 +1074,7 @@ mod tests {
         let mut deps = mock_dependencies(&[]);
         do_instantiate(deps.as_mut(), &String::from("genesis"), Uint128::new(1234));
 
-        let msg = ExecuteMsg::Mint {
+        let msg = Cw20ExecuteMsg::Mint {
             recipient: String::from("lucky"),
             amount: Uint128::new(222),
         };
@@ -1586,7 +1146,7 @@ mod tests {
             env.clone(),
             QueryMsg::Balance { address: addr1 },
         )
-        .unwrap();
+            .unwrap();
         let loaded: BalanceResponse = from_binary(&data).unwrap();
         assert_eq!(loaded.balance, amount1);
 
@@ -1598,7 +1158,7 @@ mod tests {
                 address: String::from("addr0002"),
             },
         )
-        .unwrap();
+            .unwrap();
         let loaded: BalanceResponse = from_binary(&data).unwrap();
         assert_eq!(loaded.balance, Uint128::zero());
     }
@@ -1617,7 +1177,7 @@ mod tests {
         // cannot transfer nothing
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Transfer {
+        let msg = Cw20ExecuteMsg::Transfer {
             recipient: addr2.clone(),
             amount: Uint128::zero(),
         };
@@ -1627,7 +1187,7 @@ mod tests {
         // cannot send more than we have
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Transfer {
+        let msg = Cw20ExecuteMsg::Transfer {
             recipient: addr2.clone(),
             amount: too_much,
         };
@@ -1637,7 +1197,7 @@ mod tests {
         // cannot send from empty account
         let info = mock_info(addr2.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Transfer {
+        let msg = Cw20ExecuteMsg::Transfer {
             recipient: addr1.clone(),
             amount: transfer,
         };
@@ -1647,7 +1207,7 @@ mod tests {
         // valid transfer
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Transfer {
+        let msg = Cw20ExecuteMsg::Transfer {
             recipient: addr2.clone(),
             amount: transfer,
         };
@@ -1676,7 +1236,7 @@ mod tests {
         // cannot burn nothing
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Burn {
+        let msg = Cw20ExecuteMsg::Burn {
             amount: Uint128::zero(),
         };
         let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
@@ -1689,7 +1249,7 @@ mod tests {
         // cannot burn more than we have
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Burn { amount: too_much };
+        let msg = Cw20ExecuteMsg::Burn { amount: too_much };
         let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
         assert!(matches!(err, ContractError::Std(StdError::Overflow { .. })));
         assert_eq!(
@@ -1700,7 +1260,7 @@ mod tests {
         // valid burn reduces total supply
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Burn { amount: burn };
+        let msg = Cw20ExecuteMsg::Burn { amount: burn };
         let res = execute(deps.as_mut(), env, info, msg).unwrap();
         assert_eq!(res.messages.len(), 0);
 
@@ -1727,7 +1287,7 @@ mod tests {
         // cannot send nothing
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Send {
+        let msg = Cw20ExecuteMsg::Send {
             contract: contract.clone(),
             amount: Uint128::zero(),
             msg: send_msg.clone(),
@@ -1738,7 +1298,7 @@ mod tests {
         // cannot send more than we have
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Send {
+        let msg = Cw20ExecuteMsg::Send {
             contract: contract.clone(),
             amount: too_much,
             msg: send_msg.clone(),
@@ -1749,7 +1309,7 @@ mod tests {
         // valid transfer
         let info = mock_info(addr1.as_ref(), &[]);
         let env = mock_env();
-        let msg = ExecuteMsg::Send {
+        let msg = Cw20ExecuteMsg::Send {
             contract: contract.clone(),
             amount: transfer,
             msg: send_msg.clone(),
@@ -1764,8 +1324,8 @@ mod tests {
             amount: transfer,
             msg: send_msg,
         }
-        .into_binary()
-        .unwrap();
+            .into_binary()
+            .unwrap();
         // and this is how it must be wrapped for the vm to process it
         assert_eq!(
             res.messages[0],
@@ -1784,6 +1344,214 @@ mod tests {
             query_token_info(deps.as_ref()).unwrap().total_supply,
             amount1
         );
+    }
+
+    #[test]
+    fn test_whitelist_restriction_list_creation() {
+        let mut deps = mock_dependencies(&[]);
+
+        let genesis = String::from("genesis");
+        let amount = Uint128::new(11223344);
+        let minter = String::from("asmodat");
+        let limit = Uint128::new(511223344);
+        do_instantiate_with_minter(deps.as_mut(), &genesis, amount, &minter, Some(limit));
+
+        // minter can mint coins to some winner
+        let winner = String::from("lucky");
+        let prize = Uint128::new(222_222_222);
+        let msg = Cw20ExecuteMsg::Mint {
+            recipient: winner.clone(),
+            amount: prize,
+        };
+
+        let info = mock_info(minter.as_ref(), &[]);
+        let env = mock_env();
+        let res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        assert_eq!(get_balance(deps.as_ref(), genesis), amount);
+        assert_eq!(get_balance(deps.as_ref(), winner.clone()), prize);
+
+        let mut wallet_whitelist = Vec::new();
+        let mut remove_list = Vec::new();
+        wallet_whitelist.push("Alphawallet".to_string());
+        wallet_whitelist.push("Betawallet".to_string());
+        let mut contract_whitelist = Vec::new();
+        contract_whitelist.push("Alphacontract".to_string());
+        contract_whitelist.push("Betacontract".to_string());
+        set_whitelist_expiration_timestamp(deps.as_mut(), env.clone(), info.clone(), env.clone().block.time.plus_seconds(10 * 86400));
+        restricted_wallet_list_update(deps.as_mut(), env.clone(), info.clone(), wallet_whitelist, remove_list.clone());
+        restricted_contract_list_update(deps.as_mut(), env.clone(), info.clone(), contract_whitelist, remove_list.clone());
+        let timestamp = query_restricted_list_timestamp(deps.as_ref()).unwrap();
+        assert_eq!(timestamp, env.clone().block.time.plus_seconds(10 * 86400));
+        let res2 = query_restricted_wallet_list(deps.as_ref()).unwrap();
+        println!("wallet list = {:?}", res2);
+        assert_eq!(res2.len(), 2);
+        let res3 = query_restricted_contract_list(deps.as_ref()).unwrap();
+        println!("contract list = {:?}", res3);
+        assert_eq!(res3.len(), 2);
+        remove_list.push("Betacontract".to_string());
+        remove_list.push("Betawallet".to_string());
+        let empty_add_list = Vec::new();
+        restricted_contract_list_update(deps.as_mut(), env.clone(), info.clone(), empty_add_list.clone(), remove_list.clone());
+        let res4 = query_restricted_contract_list(deps.as_ref()).unwrap();
+        println!("contract list after removal = {:?}", res4);
+        assert_eq!(res4.len(), 1);
+        restricted_wallet_list_update(deps.as_mut(), env.clone(), info.clone(), empty_add_list.clone(), remove_list.clone());
+        let res5 = query_restricted_wallet_list(deps.as_ref()).unwrap();
+        println!("wallet list after removal = {:?}", res5);
+        assert_eq!(res5.len(), 1);
+    }
+
+    #[test]
+    fn test_whitelist_executions() {
+        use cw20::{Expiration};
+
+        let mut deps = mock_dependencies(&[]);
+
+        let genesis = String::from("genesis");
+        let amount = Uint128::new(11223344);
+        let minter = String::from("asmodat");
+        let limit = Uint128::new(511223344);
+        do_instantiate_with_minter(deps.as_mut(), &genesis, amount, &minter, Some(limit));
+
+        // minter can mint coins to some winner
+        let winner = String::from("lucky");
+        let prize = Uint128::new(222_222_222);
+        let msg = Cw20ExecuteMsg::Mint {
+            recipient: winner.clone(),
+            amount: prize,
+        };
+
+        let info = mock_info(minter.as_ref(), &[]);
+        let env = mock_env();
+        let res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        assert_eq!(get_balance(deps.as_ref(), genesis), amount);
+        assert_eq!(get_balance(deps.as_ref(), winner.clone()), prize);
+
+        let mut wallet_whitelist = Vec::new();
+        let mut remove_list = Vec::new();
+        wallet_whitelist.push("Alphawallet".to_string());
+        wallet_whitelist.push("Betawallet".to_string());
+        let mut contract_whitelist = Vec::new();
+        contract_whitelist.push("Alphacontract".to_string());
+        contract_whitelist.push("Betacontract".to_string());
+        set_whitelist_expiration_timestamp(deps.as_mut(), env.clone(), info.clone(), env.clone().block.time.plus_seconds(10 * 86400));
+        restricted_wallet_list_update(deps.as_mut(), env.clone(), info.clone(), wallet_whitelist, remove_list.clone());
+        restricted_contract_list_update(deps.as_mut(), env.clone(), info.clone(), contract_whitelist, remove_list.clone());
+
+        let unrestricted_contract = String::from("contract");
+        let send_msg = Binary::from(r#"{"some":123}"#.as_bytes());
+        let restricted_wallet = String::from("Alphawallet");
+        let addr2 = String::from("addr0002");
+        let restricted_contract = String::from("Alphacontract");
+        let info1 = mock_info(restricted_wallet.as_ref(), &[]);
+        let info2 = mock_info(addr2.as_ref(), &[]);
+        let amount1 = Uint128::from(12340000u128);
+        do_instantiate(deps.as_mut(), &restricted_wallet, amount1);
+        let amount2 = Uint128::from(120u128);
+
+        println!("");
+        println!("send wallet = {:?} contract = {:?}", restricted_wallet.clone(), unrestricted_contract.clone());
+        let err0 = execute_send(deps.as_mut(), env.clone(), info1.clone(), unrestricted_contract.clone(), amount2, send_msg.clone());
+        println!("err0 = {:?}", err0);
+        assert_eq!(err0, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+        println!("");
+        println!("send wallet = {:?} contract = {:?}", restricted_wallet.clone(), restricted_contract.clone());
+        let res0 = execute_send(deps.as_mut(), env.clone(), info1.clone(), restricted_contract.clone(), amount2, send_msg.clone());
+        println!("res0 = {:?}", res0);
+        assert_ne!(res0, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+        println!("");
+        println!("send wallet = {:?} contract = {:?}", addr2.clone(), restricted_contract.clone());
+        let res1 = execute_send(deps.as_mut(), env.clone(), info2.clone(), restricted_contract.clone(), amount2, send_msg.clone());
+        println!("res1 = {:?}", res1);
+        assert_ne!(res1, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+        println!("");
+        println!("transfer wallet = {:?} contract = {:?}", restricted_wallet.clone(), unrestricted_contract.clone());
+        let err2 = execute_transfer(deps.as_mut(), env.clone(), info1.clone(), unrestricted_contract.clone(), amount2);
+        println!("err2 = {:?}", err2);
+        assert_eq!(err2, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+        println!("");
+        println!("transfer wallet = {:?} contract = {:?}", restricted_wallet.clone(), restricted_contract.clone());
+        let res2 = execute_transfer(deps.as_mut(), env.clone(), info1.clone(), restricted_contract.clone(), amount2);
+        println!("res2 = {:?}", res2);
+        assert_eq!(res2, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+        println!("");
+        println!("transfer wallet = {:?} contract = {:?}", addr2.clone(), restricted_contract.clone());
+        let res3 = execute_transfer(deps.as_mut(), env.clone(), info2.clone(), restricted_contract.clone(), amount2);
+        println!("res3 = {:?}", res3);
+        assert_ne!(res3, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+
+        println!("");
+        println!("allowance wallet = {:?} contract = {:?}", restricted_wallet.clone(), restricted_contract.clone());
+        let res4 = execute_increase_allowance(deps.as_mut(), env.clone(), info1.clone(), restricted_contract.clone(), amount2,
+                                              Some(Expiration::Never {}));
+        println!("res4 = {:?}", res4);
+        assert_ne!(res4, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+        println!("");
+        println!("allowance wallet = {:?} contract = {:?}", restricted_wallet.clone(), unrestricted_contract.clone());
+        let res5 = execute_increase_allowance(deps.as_mut(), env.clone(), info1.clone(), unrestricted_contract.clone(), amount2,
+                                              Some(Expiration::Never {}));
+        println!("res5 = {:?}", res5);
+        assert_eq!(res5, Err(StdError::generic_err("Whitelist Restricted").into()));
+
+        println!("");
+        println!("allowance wallet = {:?} contract = {:?}", addr2.clone(), restricted_contract.clone());
+        let res6 = execute_increase_allowance(deps.as_mut(), env.clone(), info2.clone(), restricted_contract.clone(), amount2,
+                                              Some(Expiration::Never {}));
+        println!("res6 = {:?}", res6);
+        assert_ne!(res6, Err(StdError::generic_err("Whitelist Restricted").into()));
+    }
+
+    #[test]
+    fn test_whitelist_restriction_list_creation_unauthorized() {
+        let mut deps = mock_dependencies(&[]);
+
+        let genesis = String::from("genesis");
+        let amount = Uint128::new(11223344);
+        let minter = String::from("asmodat");
+        let limit = Uint128::new(511223344);
+        do_instantiate_with_minter(deps.as_mut(), &genesis, amount, &minter, Some(limit));
+
+        // minter can mint coins to some winner
+        let winner = String::from("lucky");
+        let prize = Uint128::new(222_222_222);
+        let msg = Cw20ExecuteMsg::Mint {
+            recipient: winner.clone(),
+            amount: prize,
+        };
+
+        let info = mock_info(minter.as_ref(), &[]);
+        let env = mock_env();
+        let res = execute(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        assert_eq!(get_balance(deps.as_ref(), genesis), amount);
+        assert_eq!(get_balance(deps.as_ref(), winner.clone()), prize);
+
+        let info2 = mock_info(winner.as_ref(), &[]);
+        let mut wallet_whitelist = Vec::new();
+        let mut remove_list = Vec::new();
+        wallet_whitelist.push("Alphawallet".to_string());
+        wallet_whitelist.push("Betawallet".to_string());
+        let mut contract_whitelist = Vec::new();
+        contract_whitelist.push("Alphacontract".to_string());
+        contract_whitelist.push("Betacontract".to_string());
+        set_whitelist_expiration_timestamp(deps.as_mut(), env.clone(), info2.clone(), env.clone().block.time.plus_seconds(10 * 86400));
+        restricted_wallet_list_update(deps.as_mut(), env.clone(), info2.clone(), wallet_whitelist, remove_list.clone());
+        restricted_contract_list_update(deps.as_mut(), env.clone(), info2.clone(), contract_whitelist, remove_list.clone());
+        let err = query_restricted_list_timestamp(deps.as_ref());
+        assert_eq!(err, Err(StdError::generic_err("Restricted Timestamp not found")));
+        let res2 = query_restricted_wallet_list(deps.as_ref()).unwrap();
+        assert_eq!(res2.len(), 0);
+        let res3 = query_restricted_contract_list(deps.as_ref()).unwrap();
+        assert_eq!(res3.len(), 0);
     }
 
     mod marketing {
@@ -1814,13 +1582,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: Some("New project".to_owned()),
                     description: Some("Better description".to_owned()),
                     marketing: Some("creator".to_owned()),
                 },
             )
-            .unwrap_err();
+                .unwrap_err();
 
             assert_eq!(err, ContractError::Unauthorized {});
 
@@ -1868,13 +1636,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: Some("New project".to_owned()),
                     description: None,
                     marketing: None,
                 },
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -1921,13 +1689,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: Some("".to_owned()),
                     description: None,
                     marketing: None,
                 },
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -1974,13 +1742,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: None,
                     description: Some("Better description".to_owned()),
                     marketing: None,
                 },
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -2027,13 +1795,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: None,
                     description: Some("".to_owned()),
                     marketing: None,
                 },
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -2080,13 +1848,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: None,
                     description: None,
                     marketing: Some("marketing".to_owned()),
                 },
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -2133,13 +1901,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: None,
                     description: None,
                     marketing: Some("m".to_owned()),
                 },
             )
-            .unwrap_err();
+                .unwrap_err();
 
             assert!(
                 matches!(err, ContractError::Std(_)),
@@ -2190,13 +1958,13 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UpdateMarketing {
+                Cw20ExecuteMsg::UpdateMarketing {
                     project: None,
                     description: None,
                     marketing: Some("".to_owned()),
                 },
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -2243,9 +2011,9 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UploadLogo(Logo::Url("new_url".to_owned())),
+                Cw20ExecuteMsg::UploadLogo(Logo::Url("new_url".to_owned())),
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -2292,9 +2060,9 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Png(PNG_HEADER.into()))),
+                Cw20ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Png(PNG_HEADER.into()))),
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -2343,9 +2111,9 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Svg(img.into()))),
+                Cw20ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Svg(img.into()))),
             )
-            .unwrap();
+                .unwrap();
 
             assert_eq!(res.messages, vec![]);
 
@@ -2394,9 +2162,9 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Png(img.into()))),
+                Cw20ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Png(img.into()))),
             )
-            .unwrap_err();
+                .unwrap_err();
 
             assert_eq!(err, ContractError::LogoTooBig {});
 
@@ -2444,16 +2212,16 @@ mod tests {
                 std::str::from_utf8(&[b'x'; 6000]).unwrap(),
                 "</svg>",
             ]
-            .concat()
-            .into_bytes();
+                .concat()
+                .into_bytes();
 
             let err = execute(
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Svg(img.into()))),
+                Cw20ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Svg(img.into()))),
             )
-            .unwrap_err();
+                .unwrap_err();
 
             assert_eq!(err, ContractError::LogoTooBig {});
 
@@ -2501,9 +2269,9 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Png(img.into()))),
+                Cw20ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Png(img.into()))),
             )
-            .unwrap_err();
+                .unwrap_err();
 
             assert_eq!(err, ContractError::InvalidPngHeader {});
 
@@ -2552,9 +2320,9 @@ mod tests {
                 deps.as_mut(),
                 mock_env(),
                 info,
-                ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Svg(img.into()))),
+                Cw20ExecuteMsg::UploadLogo(Logo::Embedded(EmbeddedLogo::Svg(img.into()))),
             )
-            .unwrap_err();
+                .unwrap_err();
 
             assert_eq!(err, ContractError::InvalidXmlPreamble {});
 
@@ -2575,1195 +2343,5 @@ mod tests {
                 err
             );
         }
-    }
-
-    #[test]
-    fn transfer_to_categories() {
-        let mut deps = mock_dependencies(&[]);
-        let distribute_from = String::from("addr0001");
-        let distribute_to = String::from("addr0002");
-        let amount = Uint128::from(1000u128);
-
-        do_instantiate(deps.as_mut(), &distribute_from, amount);
-
-        let init_from_balance = get_balance(deps.as_ref(), distribute_from.clone());
-        let init_to_balance = get_balance(deps.as_ref(), distribute_to.clone());
-
-        // Transfer the funds
-        let mut_deps = &mut deps.as_mut();
-        let res = distribute_vested(
-            mut_deps,
-            distribute_from.clone(),
-            distribute_to.clone(),
-            amount,
-        );
-
-        let calc_new_from_balance = init_from_balance - amount;
-        let calc_new_to_balance = init_to_balance + amount;
-
-        let new_from_balance = get_balance(deps.as_ref(), distribute_from);
-        let new_to_balance = get_balance(deps.as_ref(), distribute_to);
-        // check that the transfer happened
-        assert_eq!(calc_new_from_balance, new_from_balance);
-        assert_eq!(calc_new_to_balance, new_to_balance);
-    }
-
-    #[test]
-    fn fail_transfer_to_categories() {
-        let mut deps = mock_dependencies(&[]);
-        let distribute_from = String::from("addr0001");
-        let distribute_to = String::from("addr0002");
-        let amount1 = Uint128::from(1000u128);
-
-        do_instantiate(deps.as_mut(), &distribute_from, amount1);
-
-        let init_from_balance = get_balance(deps.as_ref(), distribute_from.clone());
-        let init_to_balance = get_balance(deps.as_ref(), distribute_to.clone());
-
-        let amount = init_from_balance + Uint128::from(1000u128);
-
-        // Try to transfer more than the funds available - it should fail
-        let mut_deps = &mut deps.as_mut();
-        let res = distribute_vested(
-            mut_deps,
-            distribute_from.clone(),
-            distribute_to.clone(),
-            amount,
-        );
-
-        let new_from_balance = get_balance(deps.as_ref(), distribute_from);
-        let new_to_balance = get_balance(deps.as_ref(), distribute_to);
-
-        // check that the transfer did not happen
-        assert_eq!(new_from_balance, init_from_balance);
-        assert_eq!(new_to_balance, init_to_balance);
-    }
-
-    fn get_vesting_details() -> VestingDetails {
-        let now = mock_env().block.time;
-        let category_address = String::from("addr0002");
-        return VestingDetails {
-            vesting_start_timestamp: now,
-            initial_vesting_count: Uint128::zero(),
-            initial_vesting_consumed: Uint128::zero(),
-            vesting_periodicity: 300, // In seconds
-            vesting_count_per_period: Uint128::from(10u128),
-            total_vesting_token_count: Uint128::from(2000u128),
-            total_claimed_tokens_till_now: Uint128::zero(),
-            last_claimed_timestamp: None,
-            tokens_available_to_claim: Uint128::zero(),
-            last_vesting_timestamp: None,
-            cliff_period: 0, // in months
-            category_address: Some(category_address),
-        };
-    }
-
-    #[test]
-    fn test_vesting_at_tge() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-        println!("now {:?}", now);
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.tokens_available_to_claim += vesting_details.vesting_count_per_period;
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(1000u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_first_interval() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity);
-        let vcpp = vesting_details.vesting_count_per_period.u128();
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount.u128(), vcpp);
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_first_interval() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(1010u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_2_uncalc_interval() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(20u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_2_uncalc_interval() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(1020u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1vested_1uncalc_interval() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-
-        vesting_details.tokens_available_to_claim = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp =
-            now.minus_seconds(vesting_details.vesting_periodicity * 2);
-
-        vesting_details.last_vesting_timestamp =
-            Some(now.minus_seconds(vesting_details.vesting_periodicity));
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(10u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1claimed_1uncalc_interval() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-
-        vesting_details.total_claimed_tokens_till_now = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp =
-            now.minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-
-        vesting_details.last_vesting_timestamp = Some(
-            now.minus_seconds(vesting_details.vesting_periodicity)
-                .minus_seconds(5),
-        );
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(10u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1claimed_half_uncalc_interval() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-
-        vesting_details.total_claimed_tokens_till_now = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp =
-            now.minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-
-        vesting_details.last_vesting_timestamp = Some(
-            now.minus_seconds(vesting_details.vesting_periodicity)
-                .minus_seconds(5),
-        );
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(10u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-        println!("now {:?}", now);
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.tokens_available_to_claim += vesting_details.vesting_count_per_period;
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::zero());
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_first_interval_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity);
-        let vcpp = vesting_details.vesting_count_per_period.u128();
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount.u128(), 0u128);
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_first_interval_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_2_uncalc_interval_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_2_uncalc_intervalwith_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1vested_1uncalc_interval_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.tokens_available_to_claim = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp =
-            now.minus_seconds(vesting_details.vesting_periodicity * 2);
-
-        vesting_details.last_vesting_timestamp =
-            Some(now.minus_seconds(vesting_details.vesting_periodicity));
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1claimed_1uncalc_interval_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.total_claimed_tokens_till_now = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp =
-            now.minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-
-        vesting_details.last_vesting_timestamp = Some(
-            now.minus_seconds(vesting_details.vesting_periodicity)
-                .minus_seconds(5),
-        );
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1claimed_half_uncalc_interval_with_cliff() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        vesting_details.total_claimed_tokens_till_now = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp =
-            now.minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-
-        vesting_details.last_vesting_timestamp = Some(
-            now.minus_seconds(vesting_details.vesting_periodicity)
-                .minus_seconds(5),
-        );
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-        println!("now {:?}", now);
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-        vesting_details.tokens_available_to_claim += vesting_details.vesting_count_per_period;
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(0u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-                                         // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(1000u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_first_interval_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity);
-        let vcpp = vesting_details.vesting_count_per_period.u128();
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount.u128(), vcpp);
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_first_interval_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(1010u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_2_uncalc_interval_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(20u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_with_initial_seed_2_uncalc_interval_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        // vesting at TGE
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-        vesting_details.initial_vesting_count = Uint128::from(1000u128);
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(1020u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1vested_1uncalc_interval_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-
-        vesting_details.tokens_available_to_claim = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-
-        vesting_details.last_vesting_timestamp =
-            Some(now.minus_seconds(vesting_details.vesting_periodicity));
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(10u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1claimed_1uncalc_interval_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-
-        vesting_details.total_claimed_tokens_till_now = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-
-        vesting_details.last_vesting_timestamp = Some(
-            now.minus_seconds(vesting_details.vesting_periodicity)
-                .minus_seconds(5),
-        );
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(10u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting_at_tge_no_initial_seed_1claimed_half_uncalc_interval_with_cliff_period_over() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-        vesting_details.cliff_period = 1;
-        let vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(30 * 24 * 60 * 60);
-        vesting_details.vesting_start_timestamp = vesting_start_timestamp;
-
-        vesting_details.total_claimed_tokens_till_now = Uint128::from(10u128);
-
-        vesting_details.vesting_start_timestamp = vesting_details
-            .vesting_start_timestamp
-            .minus_seconds(vesting_details.vesting_periodicity * 2);
-        vesting_details.vesting_start_timestamp =
-            vesting_details.vesting_start_timestamp.minus_seconds(5);
-
-        vesting_details.last_vesting_timestamp = Some(
-            now.minus_seconds(vesting_details.vesting_periodicity)
-                .minus_seconds(5),
-        );
-
-        let vested_amount = calculate_tokens_for_this_period(
-            Addr::unchecked(category_address.clone()),
-            now,
-            vesting_details,
-        );
-        match vested_amount {
-            Ok(va) => {
-                assert_eq!(va.amount, Uint128::from(10u128));
-            }
-            Err(e) => {
-                println!("error = {:?}", e);
-                assert_eq!(1, 0);
-            }
-        }
-    }
-
-    #[test]
-    fn test_vesting() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let spender_address = String::from("addr0001");
-        let category_address = String::from("addr0002");
-
-        let now = mock_env().block.time; // today
-
-        let mut vesting_details = get_vesting_details();
-
-        // vesting_periodicity = 86400; // in seconds
-        // vesting_started_before = 92; // in days
-        // cliff_period = 3; // in months
-        // vesting_start_timestamp = mock_env()
-        //     .block
-        //     .time
-        //     .minus_seconds(vesting_started_before * 86400);
-        // last_vesting_timestamp = mock_env().block.time;
-        // total_vesting_token_count = Uint128::from(200u128);
-        // total_claimed_tokens_till_now = Uint128::from(0u128);
-        // tokens_available_to_claim = Uint128::from(10000u128);
-        // let vested_amount = calculate_tokens_for_this_period(
-        //     Addr::unchecked(category_address.clone()),
-        //     now,
-        //     VestingDetails {
-        //         vesting_start_timestamp: vesting_start_timestamp,
-        //         initial_vesting_count: initial_vesting_count,
-        //         initial_vesting_consumed: initial_vesting_consumed,
-        //         vesting_periodicity: vesting_periodicity,
-        //         vesting_count_per_period: vesting_count_per_period,
-        //         total_vesting_token_count: total_vesting_token_count,
-        //         total_claimed_tokens_till_now: total_claimed_tokens_till_now,
-        //         last_claimed_timestamp: last_claimed_timestamp,
-        //         tokens_available_to_claim: tokens_available_to_claim,
-        //         last_vesting_timestamp: last_vesting_timestamp,
-        //         cliff_period: cliff_period,
-        //         category_address: Some(category_address.clone()),
-        //     },
-        // );
-        // match vested_amount {
-        //     Ok(va) => {
-        //         assert_eq!(va.amount, Uint128::from(200u128));
-        //     }
-        //     Err(e) => {
-        //         assert_eq!(1, 0);
-        //     }
-        // }
-
-        // vesting_periodicity = 86400; // in seconds
-        // vesting_started_before = 90; // in days
-        // cliff_period = 3; // in months
-        // vesting_start_timestamp = mock_env()
-        //     .block
-        //     .time
-        //     .minus_seconds(vesting_started_before * 86400);
-        // last_vesting_timestamp = mock_env().block.time;
-        // total_vesting_token_count = Uint128::from(200u128);
-        // total_claimed_tokens_till_now = Uint128::from(0u128);
-        // tokens_available_to_claim = Uint128::from(10000u128);
-        // let vested_amount = calculate_tokens_for_this_period(
-        //     Addr::unchecked(category_address.clone()),
-        //     now,
-        //     VestingDetails {
-        //         vesting_start_timestamp: vesting_start_timestamp,
-        //         initial_vesting_count: initial_vesting_count,
-        //         initial_vesting_consumed: initial_vesting_consumed,
-        //         vesting_periodicity: vesting_periodicity,
-        //         vesting_count_per_period: vesting_count_per_period,
-        //         total_vesting_token_count: total_vesting_token_count,
-        //         total_claimed_tokens_till_now: total_claimed_tokens_till_now,
-        //         last_claimed_timestamp: last_claimed_timestamp,
-        //         tokens_available_to_claim: tokens_available_to_claim,
-        //         last_vesting_timestamp: last_vesting_timestamp,
-        //         cliff_period: cliff_period,
-        //         category_address: Some(category_address.clone()),
-        //     },
-        // );
-        // match vested_amount {
-        //     Ok(va) => {
-        //         assert_eq!(va.amount, Uint128::zero());
-        //     }
-        //     Err(e) => {
-        //         assert_eq!(1, 0);
-        //     }
-        // }
-
-        // vesting_periodicity = 86400; // in seconds
-        // vesting_started_before = 89; // in days
-        // cliff_period = 3; // in months
-        // let mut vesting_start_timestamp = mock_env()
-        //     .block
-        //     .time
-        //     .minus_seconds(vesting_started_before * 86400);
-        // last_vesting_timestamp = mock_env().block.time;
-        // total_vesting_token_count = Uint128::from(200u128);
-        // total_claimed_tokens_till_now = Uint128::from(0u128);
-        // tokens_available_to_claim = Uint128::from(10000u128);
-        // let vested_amount = calculate_tokens_for_this_period(
-        //     Addr::unchecked(category_address.clone()),
-        //     now,
-        //     VestingDetails {
-        //         vesting_start_timestamp: vesting_start_timestamp,
-        //         initial_vesting_count: initial_vesting_count,
-        //         initial_vesting_consumed: initial_vesting_consumed,
-        //         vesting_periodicity: vesting_periodicity,
-        //         vesting_count_per_period: vesting_count_per_period,
-        //         total_vesting_token_count: total_vesting_token_count,
-        //         total_claimed_tokens_till_now: total_claimed_tokens_till_now,
-        //         last_claimed_timestamp: last_claimed_timestamp,
-        //         tokens_available_to_claim: tokens_available_to_claim,
-        //         last_vesting_timestamp: last_vesting_timestamp,
-        //         cliff_period: cliff_period,
-        //         category_address: Some(category_address.clone()),
-        //     },
-        // );
-        // match vested_amount {
-        //     Ok(va) => {
-        //         assert_eq!(va.amount, Uint128::zero());
-        //     }
-        //     Err(e) => {
-        //         assert_eq!(1, 0);
-        //     }
-        // }
-
-        // vesting_periodicity = 86400; // in seconds
-        // vesting_started_before = 89; // in days
-        // cliff_period = 0; // in months
-        // let mut vesting_start_seconds =
-        //     mock_env().block.time.seconds() - vesting_started_before * 86400;
-        // last_vesting_timestamp = mock_env().block.time;
-        // total_vesting_token_count = Uint128::from(200u128);
-        // total_claimed_tokens_till_now = Uint128::from(0u128);
-        // tokens_available_to_claim = Uint128::from(10000u128);
-        // let vested_amount = calculate_tokens_for_this_period(
-        //     Addr::unchecked(category_address.clone()),
-        //     now,
-        //     VestingDetails {
-        //         vesting_start_timestamp: vesting_start_timestamp,
-        //         initial_vesting_count: initial_vesting_count,
-        //         initial_vesting_consumed: initial_vesting_consumed,
-        //         vesting_periodicity: vesting_periodicity,
-        //         vesting_count_per_period: vesting_count_per_period,
-        //         total_vesting_token_count: total_vesting_token_count,
-        //         total_claimed_tokens_till_now: total_claimed_tokens_till_now,
-        //         last_claimed_timestamp: last_claimed_timestamp,
-        //         tokens_available_to_claim: tokens_available_to_claim,
-        //         last_vesting_timestamp: last_vesting_timestamp,
-        //         cliff_period: cliff_period,
-        //         category_address: Some(category_address.clone()),
-        //     },
-        // );
-        // match vested_amount {
-        //     Ok(va) => {
-        //         assert_eq!(va.amount, Uint128::from(8900u128));
-        //     }
-        //     Err(e) => {
-        //         assert_eq!(1, 0);
-        //     }
-        // }
-
-        // vesting_periodicity = 0; // in seconds - immediately vest
-        // vesting_started_before = 89; // in days
-        // cliff_period = 0; // in months
-        // vesting_start_seconds = mock_env().block.time.seconds() - vesting_started_before * 86400;
-        // last_vesting_timestamp = mock_env().block.time;
-        // total_vesting_token_count = Uint128::from(200u128);
-        // total_claimed_tokens_till_now = Uint128::from(0u128);
-        // tokens_available_to_claim = Uint128::from(10000u128);
-        // let vested_amount = calculate_tokens_for_this_period(
-        //     Addr::unchecked(category_address.clone()),
-        //     now,
-        //     VestingDetails {
-        //         vesting_start_timestamp: vesting_start_timestamp,
-        //         initial_vesting_count: initial_vesting_count,
-        //         initial_vesting_consumed: initial_vesting_consumed,
-        //         vesting_periodicity: vesting_periodicity,
-        //         vesting_count_per_period: vesting_count_per_period,
-        //         total_vesting_token_count: total_vesting_token_count,
-        //         total_claimed_tokens_till_now: total_claimed_tokens_till_now,
-        //         last_claimed_timestamp: last_claimed_timestamp,
-        //         tokens_available_to_claim: tokens_available_to_claim,
-        //         last_vesting_timestamp: last_vesting_timestamp,
-        //         cliff_period: cliff_period,
-        //         category_address: Some(category_address.clone()),
-        //     },
-        // );
-        // match vested_amount {
-        //     Ok(va) => {
-        //         assert_eq!(va.amount, Uint128::zero());
-        //     }
-        //     Err(e) => {
-        //         assert_eq!(1, 0);
-        //     }
-        // }
     }
 }

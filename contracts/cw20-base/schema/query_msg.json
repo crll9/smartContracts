@@ -163,6 +163,115 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "description": "Checks whether the given address is in the Restricted Wallet List, Return type: boolean",
+      "type": "object",
+      "required": [
+        "is_restricted_wallet"
+      ],
+      "properties": {
+        "is_restricted_wallet": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Checks whether the given address is in the Restricted Contract List, Return type: boolean",
+      "type": "object",
+      "required": [
+        "is_restricted_contract"
+      ],
+      "properties": {
+        "is_restricted_contract": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Returns the list of wallet addresses in the Restricted Wallet List",
+      "type": "object",
+      "required": [
+        "restricted_wallet_list"
+      ],
+      "properties": {
+        "restricted_wallet_list": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Returns the list of contract addresses in the Restricted Contract List",
+      "type": "object",
+      "required": [
+        "restricted_contract_list"
+      ],
+      "properties": {
+        "restricted_contract_list": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Returns the Timestamp, when the Restrictions shall expire",
+      "type": "object",
+      "required": [
+        "restricted_list_timestamp"
+      ],
+      "properties": {
+        "restricted_list_timestamp": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "whitelist_restriction"
+      ],
+      "properties": {
+        "whitelist_restriction": {
+          "type": "object",
+          "required": [
+            "contract_address",
+            "contract_check_needed",
+            "wallet_address"
+          ],
+          "properties": {
+            "contract_address": {
+              "type": "string"
+            },
+            "contract_check_needed": {
+              "type": "boolean"
+            },
+            "wallet_address": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ]
 }
